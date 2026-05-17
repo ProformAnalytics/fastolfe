@@ -37,14 +37,15 @@ take_group(_, _, _, Rest, [], Rest).
 % sort_h2h(+Group, +Season, +Pos, -Rows, -NextPos)
 % Single team: no H2H needed.
 sort_h2h([Elem], _, Pos, [row(Pos,Team,P,W,D,L,GF,GA,GD,Pts)], Pos1) :-
+    !,
     Elem = t(_,_,_,Team,P,W,D,L,GF,GA,GD,Pts),
     Pos1 is Pos + 1.
 % Tied group: re-rank within the group by H2H stats.
 sort_h2h(Group, Season, Pos, Rows, NextPos) :-
     Group = [_,_|_],
     findall(Team, member(t(_,_,_,Team,_,_,_,_,_,_,_,_), Group), Teams),
-    findall(NH-NAG-t(_,_,_,Team,P,W,D,L,GF,GA,GD,Pts),
-        ( member(t(_,_,_,Team,P,W,D,L,GF,GA,GD,Pts), Group),
+    findall(NH-NAG-t(NP,NGD,NGF,Team,P,W,D,L,GF,GA,GD,Pts),
+        ( member(t(NP,NGD,NGF,Team,P,W,D,L,GF,GA,GD,Pts), Group),
           h2h_stats(Team, Teams, Season, H2HPts, H2HAG),
           NH is -H2HPts, NAG is -H2HAG ),
     H2HKeyed),

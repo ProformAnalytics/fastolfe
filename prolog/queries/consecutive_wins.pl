@@ -29,11 +29,11 @@ max_consecutive_home_wins(Team, Streak) :-
 max_win_streak([], Cur, Max, Result) :-
     Result is max(Cur, Max).
 max_win_streak([win|Rest], Cur, Max, Result) :-
+    !,
     NewCur is Cur + 1,
     NewMax is max(NewCur, Max),
     max_win_streak(Rest, NewCur, NewMax, Result).
-max_win_streak([H|Rest], _Cur, Max, Result) :-
-    H \= win,
+max_win_streak([_|Rest], _Cur, Max, Result) :-
     max_win_streak(Rest, 0, Max, Result).
 
 % most_consecutive_home_wins(-Team, -Streak)

@@ -4,7 +4,7 @@ PROLOG_DIR = prolog
 GEN_DIR    = golang
 SEASON   ?= 2025
 
-.PHONY: generate check repl home-goals all-home-goals consecutive-wins all-consecutive-wins table
+.PHONY: generate check repl home-goals all-home-goals consecutive-wins all-consecutive-wins table test
 
 # Run the Go code generator. Re-run after each data update.
 generate:
@@ -40,3 +40,9 @@ consecutive-wins:
 # Override with: make table SEASON=2024
 table:
 	cd $(PROLOG_DIR) && $(SWIPL) -g "print_league_table($(SEASON)), halt" main.pl 2>/dev/null
+
+# Run all unit tests. Each suite gets its own isolated swipl session so that
+# fixtures from different suites cannot contaminate each other's fact database.
+test:
+	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_league_table.pl 
+	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_consecutive_wins.pl 
