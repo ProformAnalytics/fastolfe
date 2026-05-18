@@ -24,3 +24,13 @@ services:
       - PROLOG_ENGINE_URL=http://prolog-engine:8080
     depends_on:
       - prolog-engine
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - llm-gateway

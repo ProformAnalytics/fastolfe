@@ -93,3 +93,7 @@ secrets/*.txt
 
 # Generated Prolog facts — produced by `make generate`, not hand-authored
 prolog-engine/data/generated/
+
+# Frontend
+frontend/node_modules
+frontend/node_modules/*

@@ -71,7 +71,7 @@ prolog-sports/
 │   └── Dockerfile                  # Build context = repo root; COPYs prolog-engine/queries/ into image
 │
 ├── docker-compose.yml              # Orchestrates both services; wires Docker secret for API key
-├── Makefile                        # generate, test, check, docker-build, gateway-build, ask targets
+├── Makefile                        # All targets prefixed by service (prolog-*, gateway-*) or scope (docker-*)
 └── secrets/
     └── .gitkeep                    # Directory tracked; secrets/*.txt is .gitignored
 ```
@@ -83,18 +83,18 @@ prolog-sports/
 ### First time / after CSV changes
 
 ```bash
-make generate          # codegen reads CSV → writes prolog-engine/data/generated/*.pl
-make check             # syntax-check: load all facts + queries, exit (zero = clean)
-make test              # run all unit tests (must pass before any Docker build)
+make generate       # codegen reads CSV → writes prolog-engine/data/generated/*.pl
+make prolog-check   # syntax-check: load all facts + queries, exit (zero = clean)
+make prolog-test    # run all unit tests (must pass before any Docker build)
 ```
 
 ### Running locally (no Docker)
 
 ```bash
-make repl              # interactive swipl with all facts loaded
-make table             # print league table (default SEASON=2025; override SEASON=2024)
-make home-goals        # team with most home goals
-make consecutive-wins  # team with longest home win streak
+make prolog-repl              # interactive swipl with all facts loaded
+make prolog-table             # print league table (default SEASON=2025; override SEASON=2024)
+make prolog-home-goals        # team with most home goals
+make prolog-consecutive-wins  # team with longest home win streak
 ```
 
 One-off query:
@@ -104,19 +104,26 @@ cd prolog-engine && swipl -g "league_table(2024, T), print(T), halt" main.pl 2>/
 
 ### Docker
 
+All Docker image builds go through `docker compose build`. Never use bare `docker build`
+for service images — Docker Compose manages its own image namespace and `docker compose up`
+will ignore images built with bare `docker build`, running a stale cached image instead.
+
 ```bash
 # Requires make generate first — Dockerfile copies pre-generated facts
-make docker-build      # builds prolog-engine image (context: ./prolog-engine)
-make gateway-build     # builds llm-gateway image (context: repo root)
-make rebuild-all       # generate + docker-build + gateway-build in one step
+make prolog-build    # docker compose build prolog-engine
+make gateway-build   # docker compose build llm-gateway
+make rebuild-all     # generate + docker compose build (both services)
 
-docker compose up      # starts both services
+make up              # docker compose up (both services)
+make down            # docker compose down
 
-make docker-query GOAL="league_table(2025, Table)"   # query prolog-engine directly
-make ask Q="Who had the longest home win streak?"     # full NL pipeline via llm-gateway
+make prolog-query GOAL="league_table(2025, Table)"  # raw query to prolog-engine
+make ask Q="Who had the longest home win streak?"   # full NL pipeline via llm-gateway
 ```
 
 ### API key setup (Docker)
+
+The Anthropic API key is stored as a Docker file-based secret — never in an environment variable or image layer.
 
 The Anthropic API key is stored as a Docker file-based secret — never in an environment variable or image layer.
 
@@ -217,7 +224,7 @@ league_table(+Season, -Rows).
 Tests use SWI-Prolog's `library(plunit)`. Run with:
 
 ```bash
-make test
+make prolog-test
 ```
 
 Each suite runs as its own `swipl` invocation — fixtures from different suites cannot contaminate each other. Exit code is non-zero on any failure (safe as a CI gate). **Always run `make test` before building Docker images.**
@@ -234,7 +241,7 @@ Each suite runs as its own `swipl` invocation — fixtures from different suites
 1. Create a fixture in `prolog-engine/tests/fixtures/` with a new fake season number.
 2. Add `:- multifile pred/arity.` to the test file for any predicate shared across fixtures.
 3. Add a `test(name) :- ...` block.
-4. `make test` → `make check`.
+4. `make prolog-test` → `make prolog-check`.
 
 ---
 
@@ -281,8 +288,22 @@ The pre-computed `next_home_match`/`prev_home_match` chains skip steps 1–3 for
 
 ## Gotchas
 
-**`make generate` must run before `make check`, `make test`, or `make docker-build`.**
+**`make generate` must run before `make prolog-check`, `make prolog-test`, or any Docker build.**
 `prolog-engine/data/generated/` is `.gitignored`. A fresh clone has no generated facts.
+
+**Always build Docker images via `docker compose build`, never bare `docker build`.**
+Docker Compose manages its own image namespace (named by project + service). An image built with
+`docker build -t llm-gateway .` is a different image from the one `docker compose up` uses.
+Running `docker compose up` after a bare `docker build` will silently start the old cached image.
+All Makefile targets (`prolog-build`, `gateway-build`, `docker-build`) delegate to `docker compose build`.
+
+**Backtick-wrapped goals from the LLM silently corrupt Prolog queries.**
+In SWI-Prolog, backtick-delimited content (`` `...` ``) is a character code list, not a string.
+If the LLM returns `` `league_table(2025, T)` `` instead of `league_table(2025, T)`, Prolog
+evaluates the character code list as a goal — it "succeeds" but returns a list of ASCII integers,
+not query results. `handler.go`'s `stripMarkdown()` defensively strips backticks and code fences
+before sending to Prolog. The few-shot examples in `prompt.md` must not use backtick formatting
+on the `**A:**` lines, as this teaches the LLM the wrong output format.
 
 **Discontiguous predicate warnings.**
 When multiple predicate families interleave in one generated file (e.g. `home_win`, `home_draw`, `home_loss` in `results.pl`), SWI-Prolog warns unless `:- discontiguous pred/arity.` appears at the top. The generator emits these automatically. If you add a new predicate family to an existing generated file, add it to the `discontiguous` list in `codegen/internal/generator/generator.go`.
@@ -304,8 +325,11 @@ When file B is consulted and defines a predicate already in file A, SWI-Prolog s
 **Season encoding.**
 `Season` is the start year: `2025` = 2025/26. Display as: `S1 is (Season+1) mod 100`, then `format('~w/~w', [Season, S1])`.
 
-**llm-gateway startup requires prolog-engine to be healthy.**
-The gateway calls `FetchAtoms` on startup to build the LLM system prompt. If `docker compose up` is run cold, the gateway may restart once while the prolog-engine loads its ~37,000 facts (~1–2s). `depends_on: prolog-engine` in docker-compose handles ordering but not readiness — the `restart: unless-stopped` policy covers the gap.
+**`llm-gateway` startup requires `prolog-engine` to be healthy.**
+The gateway calls `FetchAtoms` on startup to build the LLM system prompt. If `docker compose up`
+is run cold, the gateway may restart once while the prolog-engine loads its ~37,000 facts (~1–2s).
+`depends_on: prolog-engine` in docker-compose handles ordering but not readiness — the
+`restart: unless-stopped` policy covers the gap.
 
 ---
 
