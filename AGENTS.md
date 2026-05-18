@@ -27,12 +27,24 @@ prolog-sports/
 │   │   ├── teams.pl                 # team/1
 │   │   ├── results.pl               # home_win/2, home_loss/2, home_draw/2, away_*/2
 │   │   ├── goals.pl                 # match_goals/3
-│   │   └── sequences.pl             # next_home_match/3, prev_home_match/3, next_away_match/3, prev_away_match/3
+│   │   ├── sequences.pl             # next_home_match/3, prev_home_match/3, next_away_match/3, prev_away_match/3
+│   │   └── season_stats.pl          # team_season/10
 │   ├── queries/                     # Hand-authored query logic
 │   │   ├── home_goals.pl
-│   │   └── consecutive_wins.pl
+│   │   ├── consecutive_wins.pl
+│   │   └── league_table.pl
+│   ├── tests/                       # Unit tests (see Testing section below)
+│   │   ├── fixtures/                # Minimal hand-crafted fact databases
+│   │   │   ├── simple_season.pl
+│   │   │   ├── gd_tiebreak.pl
+│   │   │   ├── h2h_pts_tiebreak.pl
+│   │   │   ├── h2h_away_goals.pl
+│   │   │   ├── true_tie.pl
+│   │   │   └── streaks.pl
+│   │   ├── test_league_table.pl
+│   │   └── test_consecutive_wins.pl
 │   └── main.pl                      # Loads generated/ then queries/
-└── Makefile                         # generate, check, repl, query targets
+└── Makefile                         # generate, check, repl, query, test targets
 ```
 
 ---
@@ -43,8 +55,10 @@ prolog-sports/
 make generate          # run Go generator → writes prolog/data/generated/*.pl
 make check             # syntax-check: load everything and exit (zero = clean)
 make repl              # interactive swipl with all facts loaded
+make test              # run all unit tests (see Testing section below)
 make home-goals        # example named query target
 make consecutive-wins  # example named query target
+make table             # print league table (default SEASON=2025; override with SEASON=2024)
 ```
 
 One-off queries run directly as:
@@ -70,11 +84,56 @@ next_home_match(Team, MatchId1, MatchId2). % MatchId2 is next home match after M
 prev_home_match(Team, MatchId1, MatchId2). % inverse
 next_away_match(Team, MatchId1, MatchId2).
 prev_away_match(Team, MatchId1, MatchId2).
+team_season(Team, Season, Played, Won, Drawn, Lost, GF, GA, GD, Points).
+%   Pre-aggregated per (team, season) — used directly by league_table/2.
 ```
 
 Team names are normalised to lowercase Prolog atoms:
 `"Brighton & Hove Albion"` → `brighton_and_hove_albion`
 `"Arsenal FC"` → `arsenal_fc`
+
+---
+
+## Testing
+
+Tests use SWI-Prolog's built-in `library(plunit)`. Run them with:
+
+```bash
+make test
+```
+
+Each test suite runs as its own `swipl` invocation so fixtures from different suites cannot contaminate each other's fact database. Exit code is non-zero on any failure — safe to use as a CI gate.
+
+Passing output looks like:
+```
+% PL-Unit: league_table ..... done
+% All 5 tests passed in 0.008 seconds
+```
+
+**Test structure**
+
+Each `test_*.pl` file is self-contained: it loads the relevant query module directly (not `main.pl`) and then consults only its own fixture files. No generated data is loaded during tests.
+
+```
+prolog/tests/
+  fixtures/            ← minimal, hand-crafted fact databases
+  test_league_table.pl ← loads queries/league_table + fixtures
+  test_consecutive_wins.pl ← loads queries/consecutive_wins + fixtures
+```
+
+**Fixture design rules**
+
+- Each fixture uses a fake season number (9901–9906) that cannot appear in real data, so fixture seasons never collide with each other or with generated data.
+- Fixtures for `league_table` tests define `team_season/10` facts directly (pre-aggregated, not derived from match facts). Only tests that exercise H2H tiebreaking also include `match/7` facts — `h2h_result/5` reads `match/7` directly.
+- Fixtures for `consecutive_wins` tests use `streak_*` atom prefixes for team names to avoid cross-contamination if both test files are ever loaded in the same session.
+- Predicates that appear across multiple fixture files must be declared `:- multifile` in the test file **before** any fixture is consulted. Without this, SWI-Prolog's `consult` replaces all clauses for a predicate when a second file defines it, silently discarding the first file's facts.
+
+**Adding a new test**
+
+1. Create a fixture in `prolog/tests/fixtures/` with a new fake season number.
+2. Add `:- multifile pred/arity.` to the test file for any predicates shared across fixtures.
+3. Add a `test(name) :- ...` block that queries a specific season and pattern-matches the result list.
+4. Run `make test` to confirm it passes, then `make check` to confirm `main.pl` still loads cleanly.
 
 ---
 
@@ -143,6 +202,12 @@ For ad-hoc CLI queries that need helper predicates not already in `queries/`, us
 
 **Season encoding.**
 The `Season` field is the year the season starts: `2025` = 2025/26. Format for display: `S1 is (Season+1) mod 100`, then `format('~w/~w', [Season, S1])`.
+
+**`consult` replaces all clauses for static predicates across files.**
+When file B is consulted and defines a predicate already defined in file A, SWI-Prolog retracts all of file A's clauses and loads file B's — silently, with only a "Redefined static procedure" warning. This is the default for static predicates. To allow a predicate to accumulate clauses from multiple files (as in test fixtures), declare it `:- multifile pred/arity.` **before** the first `consult`. `:- dynamic` is not sufficient — SWI-Prolog still replaces clauses on consult for dynamic predicates if they were first defined by a different file.
+
+**Anonymous variables in `findall` templates produce unbound sort keys.**
+`findall(f(_,X), ..., List)` produces items where each `_` is a fresh unbound variable. If those items are then passed to `msort`, the comparison of unbound variables is by memory address — non-deterministic and not reproducible across runs. Always use named variables in `findall` templates for any term that will be compared or sorted. This was a real bug caught by the test suite: `sort_h2h` in `league_table.pl` originally used `_,_,_` for the primary sort key fields in its H2H `findall` template, causing non-deterministic tie ordering.
 
 ---
 
