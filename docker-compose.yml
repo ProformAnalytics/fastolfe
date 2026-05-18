@@ -1,6 +1,26 @@
+secrets:
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key.txt
+
 services:
   prolog-engine:
-    build: .
+    build:
+      context: ./prolog-engine
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     restart: unless-stopped
+
+  llm-gateway:
+    build:
+      context: .
+      dockerfile: llm-gateway/Dockerfile
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    secrets:
+      - anthropic_api_key
+    environment:
+      - PROLOG_ENGINE_URL=http://prolog-engine:8080
+    depends_on:
+      - prolog-engine

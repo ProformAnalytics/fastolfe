@@ -87,3 +87,9 @@ go.work.sum
 
 # Editor/IDE
 .vscode/
+
+# Docker secrets — never commit API keys
+secrets/*.txt
+
+# Generated Prolog facts — produced by `make generate`, not hand-authored
+prolog-engine/data/generated/

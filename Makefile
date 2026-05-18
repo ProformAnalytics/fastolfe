@@ -1,57 +1,63 @@
-SWIPL    ?= swipl
-GO       ?= go
-PROLOG_DIR = prolog
-GEN_DIR    = golang
-SEASON   ?= 2025
+SWIPL  ?= swipl
+GO     ?= go
+SEASON ?= 2025
 
-.PHONY: generate check repl home-goals all-home-goals consecutive-wins all-consecutive-wins table test docker-build docker-run docker-query rebuild
+.PHONY: generate check repl home-goals all-home-goals consecutive-wins \
+        all-consecutive-wins table test \
+        docker-build docker-run docker-query rebuild \
+        gateway-build rebuild-all ask
 
-# Run the Go code generator. Re-run after each data update.
+# ── Code generation ──────────────────────────────────────────────────────────
+# Reads codegen/data/premier-league-data.csv and writes .pl facts to
+# prolog-engine/data/generated/. Run this before docker-build or make check.
+
 generate:
-	cd $(GEN_DIR) && $(GO) run ./cmd/generate \
+	cd codegen && $(GO) run ./cmd/generate \
 		-csv data/premier-league-data.csv \
-		-out ../$(PROLOG_DIR)/data/generated
+		-out ../prolog-engine/data/generated
 
-# Syntax-check: load everything and exit. Zero exit = clean.
+# ── Prolog engine (local) ────────────────────────────────────────────────────
+
+# Syntax-check: load all facts + queries and exit. Zero exit = clean.
 check:
-	cd $(PROLOG_DIR) && $(SWIPL) -g halt main.pl
+	cd prolog-engine && $(SWIPL) -g halt main.pl
 
 # Drop into an interactive REPL with all facts loaded.
 repl:
-	cd $(PROLOG_DIR) && $(SWIPL) main.pl
+	cd prolog-engine && $(SWIPL) main.pl
 
 # Print all teams with their home goal tallies.
 all-home-goals:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "print_home_goals, halt" main.pl
+	cd prolog-engine && $(SWIPL) -g "print_home_goals, halt" main.pl
 
 # Print the team with the most home goals.
 home-goals:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "print_most_home_goals, halt" main.pl
+	cd prolog-engine && $(SWIPL) -g "print_most_home_goals, halt" main.pl
 
 # Print each team's consecutive home win streak.
 all-consecutive-wins:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "print_home_win_streaks, halt" main.pl
+	cd prolog-engine && $(SWIPL) -g "print_home_win_streaks, halt" main.pl
 
 # Print the team with the longest consecutive home win streak.
 consecutive-wins:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "print_most_consecutive_home_wins, halt" main.pl
+	cd prolog-engine && $(SWIPL) -g "print_most_consecutive_home_wins, halt" main.pl
 
 # Print the league table for a given season (default: 2025 = 2025/26).
 # Override with: make table SEASON=2024
 table:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "print_league_table($(SEASON)), halt" main.pl 2>/dev/null
+	cd prolog-engine && $(SWIPL) -g "print_league_table($(SEASON)), halt" main.pl 2>/dev/null
 
-# Run all unit tests. Each suite gets its own isolated swipl session so that
-# fixtures from different suites cannot contaminate each other's fact database.
+# Run all unit tests. Each suite runs in its own swipl session for isolation.
 test:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_league_table.pl
-	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_consecutive_wins.pl
+	cd prolog-engine && $(SWIPL) -g "run_tests, halt" tests/test_league_table.pl
+	cd prolog-engine && $(SWIPL) -g "run_tests, halt" tests/test_consecutive_wins.pl
 
-# Build the Docker image (multi-stage: Go generates facts, swipl runs the server).
+# ── Prolog engine (Docker) ───────────────────────────────────────────────────
+# Requires `make generate` first — the Dockerfile copies pre-generated facts.
+
 docker-build:
-	docker build -t prolog-engine .
+	docker build -t prolog-engine prolog-engine
 
-# Run the Docker container on port 8080.
 docker-run:
 	docker run --rm -p 8080:8080 prolog-engine
 
@@ -61,5 +67,20 @@ docker-query:
 		-H 'Content-Type: application/json' \
 		-d '{"goal":"$(GOAL)"}' | python3 -m json.tool
 
-# Regenerate Prolog data from CSV and rebuild the Docker image in one step.
+# Generate facts then build the prolog-engine image.
 rebuild: generate docker-build
+
+# ── LLM gateway (Docker) ─────────────────────────────────────────────────────
+# Build context is the repo root so Dockerfile can COPY prolog-engine/queries/.
+
+gateway-build:
+	docker build -t llm-gateway -f llm-gateway/Dockerfile .
+
+# Generate facts, rebuild both Docker images.
+rebuild-all: generate docker-build gateway-build
+
+# Ask a natural language question. Usage: make ask Q="Who won the most matches in 2023/24?"
+ask:
+	@curl -s -X POST http://localhost:8081/ask \
+		-H 'Content-Type: application/json' \
+		-d '{"question":"$(Q)"}' | python3 -m json.tool

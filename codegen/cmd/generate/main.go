@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log"
 
-	"prolog-sports/gen/internal/generator"
-	"prolog-sports/gen/internal/loader"
+	"prolog-sports/codegen/internal/generator"
+	"prolog-sports/codegen/internal/loader"
 )
 
 func main() {
 	csvPath := flag.String("csv", "data/premier-league-data.csv", "path to CSV data file")
-	outDir := flag.String("out", "../prolog/data/generated", "output directory for generated .pl files")
+	outDir := flag.String("out", "../prolog-engine/data/generated", "output directory for generated .pl files")
 	flag.Parse()
 
 	// Swap NewCSVSource for a NewPostgresSource here when moving to production.

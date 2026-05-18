@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"prolog-sports/gen/internal/loader"
+	"prolog-sports/codegen/internal/loader"
 )
 
 // Generate writes all Prolog fact files to outDir.
