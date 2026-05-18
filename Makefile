@@ -60,10 +60,10 @@ prolog-table:
 # Requires `make generate` first — the Dockerfile copies pre-generated facts.
 
 prolog-build:
-	docker build -t prolog-engine prolog-engine
+	docker compose build prolog-engine
 
 prolog-run:
-	docker run --rm -p 8080:8080 prolog-engine
+	docker compose run --rm prolog-engine
 
 # Fire a raw Prolog query at the running prolog-engine container.
 # Usage: make prolog-query GOAL="league_table(2025, Table)"
@@ -79,7 +79,7 @@ prolog-rebuild: generate prolog-build
 # Build context is the repo root so Dockerfile can COPY prolog-engine/queries/.
 
 gateway-build:
-	docker build -t llm-gateway -f llm-gateway/Dockerfile .
+	docker compose build llm-gateway
 
 # Run only the gateway service via compose (handles Docker secret injection).
 gateway-run:
@@ -94,8 +94,9 @@ ask:
 
 # ── Full stack ───────────────────────────────────────────────────────────────
 
-# Build both service images (without regenerating facts).
-docker-build: prolog-build gateway-build
+# Build both service images via Docker Compose.
+docker-build:
+	docker compose build
 
 # Start both services.
 docker-run: up

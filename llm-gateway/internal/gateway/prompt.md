@@ -208,33 +208,40 @@ findall(HG-AG, match(_, 2023, _, arsenal_fc, chelsea, HG, AG), Results)
 
 ## Output constraints
 
-- Return ONLY the Prolog goal — no period, no explanation, no code fences
+CRITICAL: Return a bare Prolog goal string and nothing else.
+- No backticks — not single (`) and not triple (```)
+- No code fences, no markdown formatting of any kind
+- No trailing period
+- No explanation, no preamble, no commentary
 - Variables must be uppercase or begin with `_`
 - Use only the predicates listed above or defined in the query modules
 - Do not use `assert`, `retract`, or `abolish`
-- If the question cannot be answered with the available predicates, return: `fail`
+- If the question cannot be answered with the available predicates, return: fail
+
+The output is fed directly into a Prolog interpreter. Any wrapping characters
+will be interpreted as Prolog syntax and cause the query to fail silently.
 
 ---
 
 ## Few-shot examples
 
 **Q:** What was the Premier League table at the end of 2023/24?
-**A:** `league_table(2023, Table)`
+**A:** league_table(2023, Table)
 
 **Q:** Which team had the longest home win streak?
-**A:** `most_consecutive_home_wins(Team, Streak)`
+**A:** most_consecutive_home_wins(Team, Streak)
 
 **Q:** How many home games did Liverpool win in 2022/23?
-**A:** `findall(M, (home_win(liverpool, M), match(M, 2022, _, _, _, _, _)), Wins), length(Wins, N)`
+**A:** findall(M, (home_win(liverpool, M), match(M, 2022, _, _, _, _, _)), Wins), length(Wins, N)
 
 **Q:** Who scored the most goals at home across all seasons?
-**A:** `most_home_goals(Team, Goals)`
+**A:** most_home_goals(Team, Goals)
 
 **Q:** Which referee officiated the most matches in 2020/21?
-**A:** `findall(R, (match(M, 2020, _, _, _, _, _), match_referee(M, R)), Rs), msort(Rs, Sorted), findall(N-R, (referee(R), include(=(R), Sorted, Occ), length(Occ, N)), Pairs), max_member(_-TopRef, Pairs)`
+**A:** findall(R, (match(M, 2020, _, _, _, _, _), match_referee(M, R)), Rs), msort(Rs, Sorted), findall(N-R, (referee(R), include(=(R), Sorted, Occ), length(Occ, N)), Pairs), max_member(_-TopRef, Pairs)
 
 **Q:** What was the average attendance at the Etihad Stadium in 2019/20?
-**A:** `findall(A, (match_venue(M, etihad_stadium), match(M, 2019, _, _, _, _, _), match_attendance(M, A), A > 0), Atts), sumlist(Atts, Sum), length(Atts, N), Avg is Sum / N`
+**A:** findall(A, (match_venue(M, etihad_stadium), match(M, 2019, _, _, _, _, _), match_attendance(M, A), A > 0), Atts), sumlist(Atts, Sum), length(Atts, N), Avg is Sum / N
 
 **Q:** How many points did Chelsea earn in 2021/22?
-**A:** `team_season(chelsea, 2021, _, _, _, _, _, _, _, Points)`
+**A:** team_season(chelsea, 2021, _, _, _, _, _, _, _, Points)

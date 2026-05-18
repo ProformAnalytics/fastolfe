@@ -85,7 +85,7 @@ func (h *Handler) translateAndExecute(ctx context.Context, question string) (goa
 		if err != nil {
 			return "", "", fmt.Errorf("translate (attempt %d): %w", attempt+1, err)
 		}
-		goal = strings.TrimRight(strings.TrimSpace(goal), ".")
+		goal = stripMarkdown(goal)
 
 		qr, err := h.prolog.Query(ctx, goal)
 		if err != nil {
@@ -104,4 +104,27 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// stripMarkdown removes markdown formatting that an LLM may wrap around a goal.
+// In SWI-Prolog, backtick-delimited strings are character code lists, so a
+// backtick-wrapped goal is never executed as intended.
+func stripMarkdown(s string) string {
+	s = strings.TrimSpace(s)
+	// Strip triple-backtick code fences (```prolog\n...\n``` or ```\n...\n```)
+	if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+		if i := strings.Index(s, "```"); i >= 0 {
+			s = s[:i]
+		}
+		// Drop optional language tag on the first line (e.g. "prolog\n")
+		if nl := strings.Index(s, "\n"); nl >= 0 {
+			s = s[nl+1:]
+		}
+	}
+	// Strip single backtick wrapping
+	s = strings.Trim(s, "`")
+	// Strip trailing period and whitespace
+	s = strings.TrimRight(strings.TrimSpace(s), ".")
+	return strings.TrimSpace(s)
 }
