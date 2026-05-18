@@ -4,7 +4,7 @@ PROLOG_DIR = prolog
 GEN_DIR    = golang
 SEASON   ?= 2025
 
-.PHONY: generate check repl home-goals all-home-goals consecutive-wins all-consecutive-wins table test
+.PHONY: generate check repl home-goals all-home-goals consecutive-wins all-consecutive-wins table test docker-build docker-run docker-query rebuild
 
 # Run the Go code generator. Re-run after each data update.
 generate:
@@ -44,5 +44,22 @@ table:
 # Run all unit tests. Each suite gets its own isolated swipl session so that
 # fixtures from different suites cannot contaminate each other's fact database.
 test:
-	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_league_table.pl 
-	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_consecutive_wins.pl 
+	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_league_table.pl
+	cd $(PROLOG_DIR) && $(SWIPL) -g "run_tests, halt" tests/test_consecutive_wins.pl
+
+# Build the Docker image (multi-stage: Go generates facts, swipl runs the server).
+docker-build:
+	docker build -t prolog-engine .
+
+# Run the Docker container on port 8080.
+docker-run:
+	docker run --rm -p 8080:8080 prolog-engine
+
+# Fire a query at the running container. Usage: make docker-query GOAL="league_table(2025, Table)"
+docker-query:
+	@curl -s -X POST http://localhost:8080/query \
+		-H 'Content-Type: application/json' \
+		-d '{"goal":"$(GOAL)"}' | python3 -m json.tool
+
+# Regenerate Prolog data from CSV and rebuild the Docker image in one step.
+rebuild: generate docker-build

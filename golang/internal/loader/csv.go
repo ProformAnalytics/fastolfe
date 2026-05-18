@@ -117,15 +117,27 @@ func parseRow(record []string, idx map[string]int) (Match, error) {
 		}
 	}
 
+	attendance := 0
+	if att := get("attendance"); att != "" && att != "NULL" {
+		if n, e := strconv.Atoi(att); e == nil {
+			attendance = n
+		} else if f, e := strconv.ParseFloat(att, 64); e == nil {
+			attendance = int(f)
+		}
+	}
+
 	return Match{
-		ID:        id,
-		Season:    season,
-		Date:      date,
-		HomeTeam:  get("home_team_name"),
-		AwayTeam:  get("away_team_name"),
-		HomeGoals: homeGoals,
-		AwayGoals: awayGoals,
-		Matchday:  matchday,
+		ID:         id,
+		Season:     season,
+		Date:       date,
+		HomeTeam:   get("home_team_name"),
+		AwayTeam:   get("away_team_name"),
+		HomeGoals:  homeGoals,
+		AwayGoals:  awayGoals,
+		Matchday:   matchday,
+		Referee:    get("referee_name"),
+		Venue:      get("venue_name"),
+		Attendance: attendance,
 	}, nil
 }
 

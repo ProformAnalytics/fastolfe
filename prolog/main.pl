@@ -6,6 +6,9 @@
 :- consult('data/generated/goals').
 :- consult('data/generated/sequences').
 :- consult('data/generated/season_stats').
+:- consult('data/generated/referees').
+:- consult('data/generated/venues').
+:- consult('data/generated/attendance').
 
 % Hand-authored query logic.
 :- consult('queries/home_goals').

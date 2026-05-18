@@ -41,6 +41,9 @@ func Generate(matches []loader.Match, outDir string) error {
 			"team_season/10: team_season(Team, Season, Played, Won, Drawn, Lost, GF, GA, GD, Points)",
 			nil,
 		},
+		{"referees.pl", writeReferees, "referee/1, match_referee/2", nil},
+		{"venues.pl", writeVenues, "venue/1, match_venue/2", nil},
+		{"attendance.pl", writeAttendance, "match_attendance/2", nil},
 	}
 
 	for _, step := range steps {
@@ -211,6 +214,56 @@ func writeSeasonStats(matches []loader.Match, w *bufio.Writer) error {
 		pts := s.won*3 + s.drawn
 		fmt.Fprintf(w, "team_season(%s, %d, %d, %d, %d, %d, %d, %d, %d, %d).\n",
 			k.team, k.season, s.played, s.won, s.drawn, s.lost, s.gf, s.ga, gd, pts)
+	}
+	return nil
+}
+
+// referee(RefereeAtom).
+// match_referee(MatchId, RefereeAtom).
+func writeReferees(matches []loader.Match, w *bufio.Writer) error {
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if m.Referee != "" {
+			seen[atom(m.Referee)] = true
+		}
+	}
+	for _, r := range sortedKeys(seen) {
+		fmt.Fprintf(w, "referee(%s).\n", r)
+	}
+	fmt.Fprintln(w)
+	for _, m := range matches {
+		if m.Referee != "" {
+			fmt.Fprintf(w, "match_referee(%d, %s).\n", m.ID, atom(m.Referee))
+		}
+	}
+	return nil
+}
+
+// venue(VenueAtom).
+// match_venue(MatchId, VenueAtom).
+func writeVenues(matches []loader.Match, w *bufio.Writer) error {
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if m.Venue != "" {
+			seen[atom(m.Venue)] = true
+		}
+	}
+	for _, v := range sortedKeys(seen) {
+		fmt.Fprintf(w, "venue(%s).\n", v)
+	}
+	fmt.Fprintln(w)
+	for _, m := range matches {
+		if m.Venue != "" {
+			fmt.Fprintf(w, "match_venue(%d, %s).\n", m.ID, atom(m.Venue))
+		}
+	}
+	return nil
+}
+
+// match_attendance(MatchId, Attendance).
+func writeAttendance(matches []loader.Match, w *bufio.Writer) error {
+	for _, m := range matches {
+		fmt.Fprintf(w, "match_attendance(%d, %d).\n", m.ID, m.Attendance)
 	}
 	return nil
 }

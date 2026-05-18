@@ -6,14 +6,17 @@ import "context"
 // Dates are YYYYMMDD integers: straightforward to sort and compatible with
 // Datalog if we ever migrate (compound terms are not valid Datalog).
 type Match struct {
-	ID        int64  // transfermarkt_id — stable external key
-	Season    int    // e.g. 2025 for the 2025/26 season
-	Date      int    // YYYYMMDD
-	HomeTeam  string // raw name from source, e.g. "Arsenal FC"
-	AwayTeam  string
-	HomeGoals int
-	AwayGoals int
-	Matchday  int // 0 if not available
+	ID         int64  // transfermarkt_id — stable external key
+	Season     int    // e.g. 2025 for the 2025/26 season
+	Date       int    // YYYYMMDD
+	HomeTeam   string // raw name from source, e.g. "Arsenal FC"
+	AwayTeam   string
+	HomeGoals  int
+	AwayGoals  int
+	Matchday   int    // 0 if not available
+	Referee    string // referee_name from source, empty if not available
+	Venue      string // venue_name from source, empty if not available
+	Attendance int    // 0 if not available
 }
 
 // MatchSource is the single extension point for data backends.
