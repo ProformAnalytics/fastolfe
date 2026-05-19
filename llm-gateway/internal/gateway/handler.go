@@ -40,7 +40,8 @@ type askResponse struct {
 }
 
 type errorResponse struct {
-	Error string `json:"error"`
+	Error       string `json:"error"`
+	PrologQuery string `json:"prolog_query,omitempty"`
 }
 
 func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +58,7 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 
 	goal, prologResult, err := h.translateAndExecute(r.Context(), req.Question)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error(), PrologQuery: goal})
 		return
 	}
 

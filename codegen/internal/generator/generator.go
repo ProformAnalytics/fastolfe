@@ -34,8 +34,8 @@ func Generate(matches []loader.Match, outDir string) error {
 		},
 		{"goals.pl", writeGoals, "match_goals/3", nil},
 		{"sequences.pl", writeSequences,
-			"next_home_match/3, prev_home_match/3, next_away_match/3, prev_away_match/3",
-			[]string{"next_home_match/3", "prev_home_match/3", "next_away_match/3", "prev_away_match/3"},
+			"next_home_match/3, prev_home_match/3, next_away_match/3, prev_away_match/3, next_match/3, prev_match/3",
+			[]string{"next_home_match/3", "prev_home_match/3", "next_away_match/3", "prev_away_match/3", "next_match/3", "prev_match/3"},
 		},
 		{"season_stats.pl", writeSeasonStats,
 			"team_season/10: team_season(Team, Season, Played, Won, Drawn, Lost, GF, GA, GD, Points)",
@@ -119,8 +119,9 @@ func writeGoals(matches []loader.Match, w *bufio.Writer) error {
 
 // next_home_match(Team, MatchId1, MatchId2) — MatchId2 is the next home match after MatchId1.
 // prev_home_match(Team, MatchId1, MatchId2) — MatchId2 is the previous home match before MatchId1.
-// Same for away. Pre-computing these successor chains enables Datalog-style recursive
-// streak queries without findall+sort overhead at query time.
+// Same for away. next_match/prev_match are the combined (home+away) chains.
+// Pre-computing these successor chains enables consecutive-sequence queries via inline
+// chain expansion — no findall+sort needed at query time.
 func writeSequences(matches []loader.Match, w *bufio.Writer) error {
 	type ref struct {
 		date int
@@ -128,11 +129,14 @@ func writeSequences(matches []loader.Match, w *bufio.Writer) error {
 	}
 	home := make(map[string][]ref)
 	away := make(map[string][]ref)
+	all  := make(map[string][]ref)
 
 	for _, m := range matches {
 		h, a := atom(m.HomeTeam), atom(m.AwayTeam)
 		home[h] = append(home[h], ref{m.Date, m.ID})
 		away[a] = append(away[a], ref{m.Date, m.ID})
+		all[h] = append(all[h], ref{m.Date, m.ID})
+		all[a] = append(all[a], ref{m.Date, m.ID})
 	}
 
 	sortRefs := func(refs []ref) {
@@ -150,6 +154,7 @@ func writeSequences(matches []loader.Match, w *bufio.Writer) error {
 	for _, t := range sortedKeys(home) {
 		emitChain(t, home[t], "next_home_match", "prev_home_match")
 		emitChain(t, away[t], "next_away_match", "prev_away_match")
+		emitChain(t, all[t], "next_match", "prev_match")
 	}
 	return nil
 }
