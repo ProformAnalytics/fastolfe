@@ -18,6 +18,7 @@ SEASON ?= 2025
 generate:
 	cd codegen && $(GO) run ./cmd/generate \
 		-csv data/premier-league-data.csv \
+		-player-csv data/player-in-match-data.csv \
 		-out ../prolog-engine/data/generated
 
 # ── Prolog engine (local) ────────────────────────────────────────────────────

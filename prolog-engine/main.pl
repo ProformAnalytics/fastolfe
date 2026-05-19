@@ -9,8 +9,14 @@
 :- consult('data/generated/referees').
 :- consult('data/generated/venues').
 :- consult('data/generated/attendance').
+:- consult('data/generated/players').
+:- consult('data/generated/player_appearances').
+:- consult('data/generated/player_stats').
+:- consult('data/generated/player_season_stats').
+:- consult('data/generated/player_sequences').
 
 % Hand-authored query logic.
 :- consult('queries/home_goals').
 :- consult('queries/consecutive_wins').
 :- consult('queries/league_table').
+:- consult('queries/player_streaks').

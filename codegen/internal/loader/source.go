@@ -25,3 +25,28 @@ type Match struct {
 type MatchSource interface {
 	LoadMatches(ctx context.Context) ([]Match, error)
 }
+
+// PlayerAppearance is one player's record in one match (started, subbed on,
+// or listed on the bench but unused). All 158k rows of the player CSV map to
+// one struct each.
+type PlayerAppearance struct {
+	MatchID     int64
+	MatchDate   int    // YYYYMMDD
+	Season      int    // derived from date: month>=8 → year, else year-1
+	PlayerID    int64
+	PlayerName  string // raw UTF-8 name from source
+	DateOfBirth int    // YYYYMMDD; 0 if missing or unparseable
+	TeamName    string // team the player represented (home or away team name)
+	Role        string // "starter" | "sub" | "bench"
+	IsCaptain   bool
+	Position    string // main_position value from source
+	Minutes     int
+	Goals       int
+	Assists     int
+}
+
+// PlayerAppearanceSource is the extension point for player data backends.
+type PlayerAppearanceSource interface {
+	LoadPlayerAppearances(ctx context.Context) ([]PlayerAppearance, error)
+}
+

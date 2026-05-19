@@ -91,6 +91,9 @@ go.work.sum
 # Docker secrets — never commit API keys
 secrets/*.txt
 
+# Data
+codegen/data
+
 # Generated Prolog facts — produced by `make generate`, not hand-authored
 prolog-engine/data/generated/
 

@@ -22,6 +22,7 @@ var queryFiles = []string{
 	"home_goals.pl",
 	"consecutive_wins.pl",
 	"league_table.pl",
+	"player_streaks.pl",
 }
 
 func LoadQueryFiles(dir string) (string, error) {

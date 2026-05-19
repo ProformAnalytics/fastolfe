@@ -201,6 +201,110 @@ sumlist(Atts, Sum), length(Atts, N), Avg is Sum / N
 
 ---
 
+## Player predicates
+
+All player names are normalised with the same `atom()` rules as team names (lowercase, accents stripped, non-alnum → `_`). Player IDs are stable Transfermarkt integer keys.
+
+### player/3
+```prolog
+player(+PlayerId, +NameAtom, +DOB)
+```
+- `PlayerId` — Transfermarkt integer, unique per person
+- `NameAtom` — normalised name atom (e.g. `erling_haaland`)
+- `DOB` — YYYYMMDD integer; 0 if birth date is missing
+
+One fact per unique player ID. Use this to enumerate all known players:
+```prolog
+findall(P, player(P, erling_haaland, _), Ids)
+```
+
+### player_name/2
+```prolog
+player_name(+NameAtom, -PlayerId)
+```
+Maps a name atom to a player ID. **Multiple clauses exist for shared names** — e.g. two different players named "Aaron Ramsey" each get their own clause. When a name query returns multiple IDs, report stats per team to distinguish them.
+
+Example — resolve a name to all matching IDs:
+```prolog
+findall(Id, player_name(harry_kane, Id), Ids)
+```
+
+### player_appearance/5
+```prolog
+player_appearance(+MatchId, +PlayerId, +TeamAtom, +Role, +Minutes)
+```
+- `Role` ∈ `starter` | `sub` | `bench`
+- `Minutes` — 0 for bench-only; actual playing time for starters and subs
+- All 158,343 rows are present including bench players
+
+Example — all matches where Haaland started:
+```prolog
+findall(M, player_appearance(M, 418560, _, starter, _), Matches)
+```
+
+### player_goals/3, player_assists/3, player_captain/2 — sparse facts
+```prolog
+player_goals(+MatchId, +PlayerId, +Goals)      % only when Goals > 0
+player_assists(+MatchId, +PlayerId, +Assists)  % only when Assists > 0
+player_captain(+PlayerId, +MatchId)            % only when IsCaptain = True
+```
+These predicates are **sparse** — rows with zero goals/assists are omitted to save space. Use `findall` + `sumlist` to aggregate:
+
+Example — total Premier League goals for a player:
+```prolog
+findall(G, player_goals(_, 418560, G), Gs), sumlist(Gs, Total)
+```
+
+Example — all matches where a player was captain:
+```prolog
+findall(M, player_captain(418560, M), CaptainMatches)
+```
+
+### player_season/9
+```prolog
+player_season(+PlayerId, +TeamAtom, +Season,
+              -Appearances, -Starts, -Subs, -Minutes, -Goals, -Assists)
+```
+Pre-aggregated per (player, team, season). `Appearances = Starts + Subs` (minutes > 0 only; bench-only games excluded). **Players who transferred mid-season get TWO facts** — one per team. Sum both to get full season totals.
+
+Example — Haaland's 2024/25 season stats:
+```prolog
+player_season(418560, _, 2024, Apps, _, _, Mins, Goals, Assists)
+```
+
+Example — total goals in a season including mid-season transfer:
+```prolog
+findall(G, player_season(PlayerId, _, Season, _, _, _, _, G, _), Gs), sumlist(Gs, Total)
+```
+
+Example — top scorers in 2023/24:
+```prolog
+top_scorers(2023, Pairs)
+```
+
+### next_player_match/3, prev_player_match/3
+```prolog
+next_player_match(+PlayerId, +MatchId1, -MatchId2)  % next appearance after MatchId1
+prev_player_match(+PlayerId, +MatchId1, -MatchId2)  % previous appearance before MatchId1
+```
+Precomputed successor/predecessor chains built from appearances where `Minutes > 0` (starters and subs who played; bench-only games excluded). Use for consecutive scoring queries the same way `next_match/3` is used for team streaks.
+
+**Pattern: consecutive scoring run (inline chain expansion)**
+
+Most recent time a player scored in 3 consecutive appearances:
+```prolog
+findall(D3, (
+    player_goals(M1, PlayerId, _),
+    next_player_match(PlayerId, M1, M2), player_goals(M2, PlayerId, _),
+    next_player_match(PlayerId, M2, M3), player_goals(M3, PlayerId, _),
+    match(M3, _, D3, _, _, _, _)
+), Dates), max_member(LastDate, Dates)
+```
+
+**CRITICAL — for maximum streak length, use `player_goal_streak/2` from player_streaks.pl instead of inline expansion.** Inline expansion is for "most recent time N consecutive" queries; `player_goal_streak` is for "what is the longest streak ever".
+
+---
+
 ## Hand-authored query modules
 
 The following Prolog source files are loaded at runtime. They define
@@ -322,6 +426,38 @@ sumlist(Atts, Sum), length(Atts, N), Avg is Sum / N
 findall(HG-AG, match(_, 2023, _, arsenal_fc, chelsea, HG, AG), Results)
 ```
 
+**Resolve a player name to ID(s) — always do this before any player query:**
+```prolog
+findall(Id, player_name(erling_haaland, Id), Ids)
+```
+If multiple IDs are returned, check which team each played for and report per-team.
+
+**Player career goals — use player_career_goals/2 from player_streaks.pl:**
+```prolog
+player_career_goals(418560, Total)
+```
+
+**Player season totals including mid-season transfers:**
+```prolog
+findall(G, player_season(PlayerId, _, Season, _, _, _, _, G, _), Gs), sumlist(Gs, TotalGoals)
+```
+
+**Longest consecutive scoring streak — always use player_goal_streak/2:**
+```prolog
+player_goal_streak(PlayerId, MaxStreak)
+```
+
+**Most recent time a player scored in N consecutive appearances (inline expansion):**
+```prolog
+% N=3 example:
+findall(D3, (
+    player_goals(M1, PlayerId, _),
+    next_player_match(PlayerId, M1, M2), player_goals(M2, PlayerId, _),
+    next_player_match(PlayerId, M2, M3), player_goals(M3, PlayerId, _),
+    match(M3, _, D3, _, _, _, _)
+), Dates), max_member(LastDate, Dates)
+```
+
 ---
 
 ## Tool use strategy
@@ -371,3 +507,19 @@ format (20231105 → 5 November 2023), seasons to start/end year (2023 → 2023/
 
 **Q: Which referee officiated the most matches in 2020/21?**
 → Call: `findall(R, (match(M, 2020, _, _, _, _, _), match_referee(M, R)), Rs), msort(Rs, Sorted), findall(N-R, (referee(R), include(=(R), Sorted, Occ), length(Occ, N)), Pairs), max_member(_-TopRef, Pairs)`
+
+**Q: How many Premier League goals has Erling Haaland scored?**
+→ Call: `findall(Id, player_name(erling_haaland, Id), Ids)` — get the player ID
+→ Call: `player_career_goals(418560, Total)` — use the resolved ID, not the name
+
+**Q: Who was the top scorer in 2023/24?**
+→ Call: `top_scorers(2023, Pairs)` — returns descending Goals-PlayerId-TeamAtom list
+→ Call: `player(PlayerId, Name, _)` — resolve the ID to a readable name
+
+**Q: What is the longest consecutive scoring streak for a player in the Premier League?**
+→ Call: `best_player_goal_streak(PlayerId, MaxStreak)` — finds the maximum across all players
+→ Call: `player(PlayerId, Name, _)` — resolve to a name
+
+**Q: How many goals did Harry Kane score in 2022/23?**
+→ Call: `findall(Id, player_name(harry_kane, Id), Ids)` — resolve name (may return multiple IDs)
+→ For each ID: `player_season_goals(Id, 2022, Goals)` — sum if multiple IDs found
