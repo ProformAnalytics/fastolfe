@@ -1,14 +1,11 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 )
-
-const maxRetries = 3
 
 type Handler struct {
 	llm    *LLMClient
@@ -33,15 +30,14 @@ type askRequest struct {
 }
 
 type askResponse struct {
-	Question     string `json:"question"`
-	PrologQuery  string `json:"prolog_query"`
-	PrologResult string `json:"prolog_result"`
-	Answer       string `json:"answer"`
+	Question  string     `json:"question"`
+	ToolCalls []ToolCall `json:"tool_calls"`
+	Answer    string     `json:"answer"`
 }
 
 type errorResponse struct {
-	Error       string `json:"error"`
-	PrologQuery string `json:"prolog_query,omitempty"`
+	Error     string     `json:"error"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
 func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
@@ -56,49 +52,20 @@ func (h *Handler) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goal, prologResult, err := h.translateAndExecute(r.Context(), req.Question)
+	answer, toolCalls, err := h.llm.Answer(r.Context(), req.Question, h.prolog)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error(), PrologQuery: goal})
-		return
-	}
-
-	answer, err := h.llm.FormatAnswer(r.Context(), req.Question, prologResult)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: fmt.Sprintf("format answer: %s", err)})
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error:     fmt.Sprintf("answer failed: %s", err),
+			ToolCalls: toolCalls,
+		})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, askResponse{
-		Question:     req.Question,
-		PrologQuery:  goal,
-		PrologResult: prologResult,
-		Answer:       answer,
+		Question:  req.Question,
+		ToolCalls: toolCalls,
+		Answer:    answer,
 	})
-}
-
-// translateAndExecute runs the translate → execute → retry loop.
-// On Prolog failure it feeds the error back to the LLM for self-correction (up to maxRetries).
-func (h *Handler) translateAndExecute(ctx context.Context, question string) (goal, result string, err error) {
-	var lastError string
-
-	for attempt := range maxRetries {
-		goal, err = h.llm.TranslateToProlog(ctx, question, lastError)
-		if err != nil {
-			return "", "", fmt.Errorf("translate (attempt %d): %w", attempt+1, err)
-		}
-		goal = stripMarkdown(goal)
-
-		qr, err := h.prolog.Query(ctx, goal)
-		if err != nil {
-			return "", "", fmt.Errorf("prolog query (attempt %d): %w", attempt+1, err)
-		}
-		if qr.Success {
-			return goal, qr.Result, nil
-		}
-		lastError = qr.Error
-	}
-
-	return goal, "", fmt.Errorf("goal failed after %d attempts, last error: %s", maxRetries, lastError)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -107,25 +74,21 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// stripMarkdown removes markdown formatting that an LLM may wrap around a goal.
+// stripMarkdown removes markdown formatting an LLM may produce around a Prolog goal.
 // In SWI-Prolog, backtick-delimited strings are character code lists, so a
-// backtick-wrapped goal is never executed as intended.
+// backtick-wrapped goal silently evaluates to a list of ASCII integers.
 func stripMarkdown(s string) string {
 	s = strings.TrimSpace(s)
-	// Strip triple-backtick code fences (```prolog\n...\n``` or ```\n...\n```)
 	if strings.HasPrefix(s, "```") {
 		s = strings.TrimPrefix(s, "```")
 		if i := strings.Index(s, "```"); i >= 0 {
 			s = s[:i]
 		}
-		// Drop optional language tag on the first line (e.g. "prolog\n")
 		if nl := strings.Index(s, "\n"); nl >= 0 {
 			s = s[nl+1:]
 		}
 	}
-	// Strip single backtick wrapping
 	s = strings.Trim(s, "`")
-	// Strip trailing period and whitespace
 	s = strings.TrimRight(strings.TrimSpace(s), ".")
 	return strings.TrimSpace(s)
 }

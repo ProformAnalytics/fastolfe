@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const WELCOME_MESSAGE = {
   role: 'assistant',
@@ -39,7 +41,10 @@ function Message({ msg }) {
         </div>
       )}
       <div className={`bubble ${isUser ? 'user-bubble' : 'assistant-bubble'} ${msg.error ? 'error-bubble' : ''}`}>
-        <p className="bubble-text">{msg.content}</p>
+        {isUser
+          ? <p className="bubble-text">{msg.content}</p>
+          : <div className="bubble-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
+        }
         {!isUser && msg.prologQuery && (
           <PrologDetails query={msg.prologQuery} result={msg.prologResult} />
         )}
