@@ -19,4 +19,5 @@
 :- consult('queries/home_goals').
 :- consult('queries/consecutive_wins').
 :- consult('queries/league_table').
+:- consult('queries/league_table_on').
 :- consult('queries/player_streaks').
